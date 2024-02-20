@@ -409,7 +409,8 @@ create() {
         is_ban_ad='{type:"field",domain:["geosite:category-ads-all"],marktag:"ban_ad",outboundTag:"block"}'
         is_ban_bt='{type:"field",protocol:["bittorrent"],marktag:"ban_bt",outboundTag:"block"}'
         is_ban_cn='{type:"field",ip:["geoip:cn"],marktag:"ban_geoip_cn",outboundTag:"block"}'
-        is_routing='routing:{domainStrategy:"IPIfNonMatch",rules:[{type:"field",inboundTag:["api"],outboundTag:"api"},'"$is_ban_bt"','"$is_ban_cn"',{type:"field",ip:["geoip:private"],outboundTag:"block"}]}'
+        is_openai='{type:"field",domain:["domain:openai.com"],marktag:"fix_openai",outboundTag:"direct"}'
+        is_routing='routing:{domainStrategy:"IPIfNonMatch",rules:[{type:"field",inboundTag:["api"],outboundTag:"api"},'"$is_ban_bt"','"$is_ban_cn"','"$is_openai"',{type:"field",ip:["geoip:private"],outboundTag:"block"}]}'
         is_inbounds='inbounds:[{tag:"api",port:'"$tmp_port"',listen:"127.0.0.1",protocol:"dokodemo-door",settings:{address:"127.0.0.1"}}]'
         is_outbounds='outbounds:[{tag:"direct",protocol:"freedom"},{tag:"block",protocol:"blackhole"}]'
         is_server_config_json=$(jq '{'"$is_log"','"$is_dns"','"$is_api"','"$is_stats"','"$is_policy"','"$is_routing"','"$is_inbounds"','"$is_outbounds"'}' <<<{})
@@ -917,6 +918,7 @@ add() {
         is_use_host=$2
         is_use_uuid=$3
         is_use_path=$4
+        is_add_opts="[host] [uuid] [/path]"
         ;;
     vmess*)
         is_use_port=$2
@@ -925,6 +927,11 @@ add() {
         is_use_dynamic_port_start=$5
         is_use_dynamic_port_end=$6
         [[ $(grep dynamic-port <<<$is_new_protocol) ]] && is_dynamic_port=1
+        if [[ $is_dynamic_port ]]; then
+            is_add_opts="[port] [uuid] [type] [start_port] [end_port]"
+        else
+            is_add_opts="[port] [uuid] [type]"
+        fi
         ;;
     # *reality*)
     #     is_reality=1
@@ -936,24 +943,32 @@ add() {
         is_use_port=$2
         is_use_pass=$3
         is_use_method=$4
+        is_add_opts="[port] [password] [method]"
         ;;
     *door)
         is_use_port=$2
         is_use_door_addr=$3
         is_use_door_port=$4
+        is_add_opts="[port] [remote_addr] [remote_port]"
         ;;
     socks)
         is_socks=1
         is_use_port=$2
         is_use_socks_user=$3
         is_use_socks_pass=$4
+        is_add_opts="[port] [username] [password]"
         ;;
     *http)
         is_use_port=$2
+        is_add_opts="[port]"
         ;;
     esac
 
-    [[ $1 && ! $is_change ]] && msg "\n使用协议: $is_new_protocol"
+    [[ $1 && ! $is_change ]] && {
+        msg "\n使用协议: $is_new_protocol"
+        # err msg tips
+        is_err_tips="\n\n请使用: $(_green $is_core add $1 $is_add_opts) 来添加 $is_new_protocol 配置"
+    }
 
     # remove old protocol args
     if [[ $is_set_new_protocol ]]; then
@@ -1002,28 +1017,28 @@ add() {
 
         if [[ $is_use_port ]]; then
             [[ ! $(is_test port ${is_use_port}) ]] && {
-                err "($is_use_port) 不是一个有效的端口."
+                err "($is_use_port) 不是一个有效的端口. $is_err_tips"
             }
             [[ $(is_test port_used $is_use_port) ]] && {
-                err "无法使用 ($is_use_port) 端口."
+                err "无法使用 ($is_use_port) 端口. $is_err_tips"
             }
             port=$is_use_port
         fi
         if [[ $is_use_door_port ]]; then
             [[ ! $(is_test port ${is_use_door_port}) ]] && {
-                err "(${is_use_door_port}) 不是一个有效的目标端口."
+                err "(${is_use_door_port}) 不是一个有效的目标端口. $is_err_tips"
             }
             door_port=$is_use_door_port
         fi
         if [[ $is_use_uuid ]]; then
             [[ ! $(is_test uuid $is_use_uuid) ]] && {
-                err "($is_use_uuid) 不是一个有效的 UUID."
+                err "($is_use_uuid) 不是一个有效的 UUID. $is_err_tips"
             }
             uuid=$is_use_uuid
         fi
         if [[ $is_use_path ]]; then
             [[ ! $(is_test path $is_use_path) ]] && {
-                err "($is_use_path) 不是有效的路径."
+                err "($is_use_path) 不是有效的路径. $is_err_tips"
             }
             path=$is_use_path
         fi
@@ -1043,7 +1058,7 @@ add() {
                 for v in ${is_tmp_list[@]}; do
                     msg "\t\t$v"
                 done
-                msg
+                msg "$is_err_tips\n"
                 exit 1
             }
             ss_method=$is_tmp_use_type
